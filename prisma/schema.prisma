@@ -1,0 +1,75 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  companyName  String
+  createdAt    DateTime   @default(now())
+  shiftRuns    ShiftRun[]
+}
+
+model Machine {
+  id             String          @id @default(uuid())
+  name           String          @unique
+  createdAt      DateTime        @default(now())
+  downtimeEvents DowntimeEvent[]
+}
+
+model ShiftRun {
+  id             String          @id @default(uuid())
+  userId         String
+  user           User            @relation(fields: [userId], references: [id])
+  date           DateTime        @default(now())
+  shiftName      String          // 'Day', 'Swing', 'Night'
+  startedAt      DateTime        @default(now())
+  endedAt        DateTime?
+  status         String          // 'ACTIVE', 'COMPLETED'
+  productionLogs ProductionLog[]
+  downtimeEvents DowntimeEvent[]
+  shiftHandovers ShiftHandover[]
+}
+
+model ProductionLog {
+  id         String   @id @default(uuid())
+  shiftRunId String
+  shiftRun   ShiftRun @relation(fields: [shiftRunId], references: [id], onDelete: Cascade)
+  hourLabel  String   // e.g. "07:00 - 08:00"
+  targetQty  Int      @default(100)
+  actualQty  Int      @default(0)
+  scrapQty   Int      @default(0)
+  comments   String?
+  createdAt  DateTime @default(now())
+}
+
+model DowntimeEvent {
+  id             String    @id @default(uuid())
+  shiftRunId     String
+  shiftRun       ShiftRun  @relation(fields: [shiftRunId], references: [id], onDelete: Cascade)
+  machineId      String
+  machine        Machine   @relation(fields: [machineId], references: [id])
+  reasonCategory String    // 'Mechanical Failure', 'Material Shortage', 'Operator Error', 'Electrical Fault'
+  startedAt      DateTime
+  endedAt        DateTime? // NULL indicates active downtime
+  notes          String?
+}
+
+model ShiftHandover {
+  id              String   @id @default(uuid())
+  shiftRunId      String   @unique
+  shiftRun        ShiftRun @relation(fields: [shiftRunId], references: [id], onDelete: Cascade)
+  aiSummary       String
+  supervisorNotes String?
+  createdAt       DateTime @default(now())
+}
