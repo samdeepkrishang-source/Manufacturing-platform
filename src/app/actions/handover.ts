@@ -3,21 +3,35 @@
 import prisma from '@/lib/db';
 import { getCurrentUser } from '@/lib/session';
 import OpenAI from 'openai';
+import { ProductionLog, DowntimeEvent, Machine, User, ShiftRun } from '@prisma/client';
 
-function generateFallbackSummary(shiftRun: any, metrics: any) {
+export interface ShiftRunMetrics {
+  totalTarget: number;
+  totalActual: number;
+  totalScrap: number;
+  totalDowntimeMinutes: number;
+}
+
+export type ShiftRunWithRelations = ShiftRun & {
+  user: User;
+  productionLogs: ProductionLog[];
+  downtimeEvents: (DowntimeEvent & { machine: Machine })[];
+};
+
+function generateFallbackSummary(shiftRun: ShiftRunWithRelations, metrics: ShiftRunMetrics): string {
   const oee = ((metrics.totalActual / (metrics.totalTarget || 1)) * 100).toFixed(1);
   const yieldRate = metrics.totalActual > 0 
     ? (((metrics.totalActual - metrics.totalScrap) / metrics.totalActual) * 100).toFixed(1)
     : '100';
 
-  const downtimeSummaries = shiftRun.downtimeEvents.map((e: any) => {
+  const downtimeSummaries = shiftRun.downtimeEvents.map((e: DowntimeEvent & { machine: Machine }) => {
     const duration = Math.round(((e.endedAt ? new Date(e.endedAt).getTime() : Date.now()) - new Date(e.startedAt).getTime()) / 60000);
     return `*   **${e.machine.name}** was down for **${duration} mins** due to **${e.reasonCategory}**. Status: ${e.endedAt ? 'Resolved' : 'Active / Unresolved'}. Notes: ${e.notes || 'None'}`;
   }).join('\n');
 
   const hourlyIssues = shiftRun.productionLogs
-    .filter((l: any) => l.actualQty < l.targetQty)
-    .map((l: any) => `*   **Hour ${l.hourLabel}**: Produced **${l.actualQty}/${l.targetQty}** parts (Scrap: ${l.scrapQty}). Reason: ${l.comments || 'No explanation provided'}`)
+    .filter((l: ProductionLog) => l.actualQty < l.targetQty)
+    .map((l: ProductionLog) => `*   **Hour ${l.hourLabel}**: Produced **${l.actualQty}/${l.targetQty}** parts (Scrap: ${l.scrapQty}). Reason: ${l.comments || 'No explanation provided'}`)
     .join('\n');
 
   return `# Shift Handover Report: ${shiftRun.shiftName} Shift
@@ -40,7 +54,7 @@ ${downtimeSummaries || 'Equipment operated continuously with zero logged breakdo
 ## 4. Next Shift Action Items
 *   [ ] Monitor lines for recurring issues logged during the shift.
 *   [ ] Ensure incoming raw materials are staged at the work stations.
-*   [ ] ${shiftRun.downtimeEvents.some((e: any) => !e.endedAt) ? '⚠️ **CRITICAL:** Coordinate with maintenance to resolve the active breakdown.' : 'Confirm all systems are running at standard cycle times.'}
+*   [ ] ${shiftRun.downtimeEvents.some((e: DowntimeEvent) => !e.endedAt) ? '⚠️ **CRITICAL:** Coordinate with maintenance to resolve the active breakdown.' : 'Confirm all systems are running at standard cycle times.'}
 `;
 }
 
@@ -61,25 +75,28 @@ export async function generateHandoverAction(shiftRunId: string): Promise<string
 
   if (!shiftRun) throw new Error("Shift run not found");
 
+  // Typecast shiftRun to ShiftRunWithRelations to safely access populated relations
+  const typedShiftRun = shiftRun as unknown as ShiftRunWithRelations;
+
   // Calculate stats
   let totalTarget = 0;
   let totalActual = 0;
   let totalScrap = 0;
   let totalDowntimeMinutes = 0;
 
-  shiftRun.productionLogs.forEach(l => {
+  typedShiftRun.productionLogs.forEach((l: ProductionLog) => {
     totalTarget += l.targetQty;
     totalActual += l.actualQty;
     totalScrap += l.scrapQty;
   });
 
-  shiftRun.downtimeEvents.forEach(e => {
+  typedShiftRun.downtimeEvents.forEach((e: DowntimeEvent & { machine: Machine }) => {
     const end = e.endedAt ? new Date(e.endedAt) : new Date();
     const diffMins = Math.round((end.getTime() - new Date(e.startedAt).getTime()) / 60000);
     totalDowntimeMinutes += diffMins;
   });
 
-  const metrics = {
+  const metrics: ShiftRunMetrics = {
     totalTarget,
     totalActual,
     totalScrap,
@@ -90,7 +107,7 @@ export async function generateHandoverAction(shiftRunId: string): Promise<string
 
   if (!apiKey) {
     // Generate fallback summary immediately
-    const summary = generateFallbackSummary(shiftRun, metrics);
+    const summary = generateFallbackSummary(typedShiftRun, metrics);
     
     // Save to handover database
     await prisma.shiftHandover.upsert({
@@ -106,11 +123,11 @@ export async function generateHandoverAction(shiftRunId: string): Promise<string
   try {
     const openai = new OpenAI({ apiKey });
     
-    const hourlyLogsText = shiftRun.productionLogs.map(l => 
+    const hourlyLogsText = typedShiftRun.productionLogs.map((l: ProductionLog) => 
       `- ${l.hourLabel}: Produced ${l.actualQty}/${l.targetQty} parts, Scrap: ${l.scrapQty}. Note: ${l.comments || 'None'}`
     ).join('\n');
 
-    const downtimeText = shiftRun.downtimeEvents.map(e => {
+    const downtimeText = typedShiftRun.downtimeEvents.map((e: DowntimeEvent & { machine: Machine }) => {
       const status = e.endedAt ? 'Resolved' : 'Active / Still down';
       const duration = Math.round(((e.endedAt ? new Date(e.endedAt).getTime() : Date.now()) - new Date(e.startedAt).getTime()) / 60000);
       return `- Machine: ${e.machine.name}, Category: ${e.reasonCategory}, Duration: ${duration} mins, Status: ${status}, Notes: ${e.notes || 'None'}`
@@ -118,9 +135,9 @@ export async function generateHandoverAction(shiftRunId: string): Promise<string
 
     const promptData = `
 Shift Details:
-- Date: ${new Date(shiftRun.date).toLocaleDateString()}
-- Shift: ${shiftRun.shiftName}
-- Supervisor: ${shiftRun.user.firstName} ${shiftRun.user.lastName}
+- Date: ${new Date(typedShiftRun.date).toLocaleDateString()}
+- Shift: ${typedShiftRun.shiftName}
+- Supervisor: ${typedShiftRun.user.firstName} ${typedShiftRun.user.lastName}
 
 Metrics:
 - Total Target: ${totalTarget}
@@ -158,7 +175,7 @@ Use the following markdown structure:
       temperature: 0.3,
     });
 
-    const summary = response.choices[0]?.message?.content || generateFallbackSummary(shiftRun, metrics);
+    const summary = response.choices[0]?.message?.content || generateFallbackSummary(typedShiftRun, metrics);
 
     // Save to handover database
     await prisma.shiftHandover.upsert({
@@ -171,7 +188,7 @@ Use the following markdown structure:
   } catch (err) {
     console.error('OpenAI generation error:', err);
     // Fallback to local generator
-    const summary = generateFallbackSummary(shiftRun, metrics);
+    const summary = generateFallbackSummary(typedShiftRun, metrics);
     await prisma.shiftHandover.upsert({
       where: { shiftRunId },
       update: { aiSummary: summary },
