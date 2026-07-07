@@ -4,6 +4,7 @@ import prisma from '@/lib/db';
 import { getCurrentUser } from '@/lib/session';
 import OpenAI from 'openai';
 import { ProductionLog, DowntimeEvent, Machine, User, ShiftRun } from '@prisma/client';
+import { ActionResponse } from './shift';
 
 export interface ShiftRunMetrics {
   totalTarget: number;
@@ -198,16 +199,21 @@ Use the following markdown structure:
   }
 }
 
-export async function saveHandoverNotesAction(shiftRunId: string, notes: string) {
-  const user = await getCurrentUser();
-  if (!user) throw new Error("Unauthorized");
+export async function saveHandoverNotesAction(shiftRunId: string, notes: string): Promise<ActionResponse> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) return { success: false, error: "Unauthorized session." };
 
-  const updated = await prisma.shiftHandover.update({
-    where: { shiftRunId },
-    data: {
-      supervisorNotes: notes
-    }
-  });
+    await prisma.shiftHandover.update({
+      where: { shiftRunId },
+      data: {
+        supervisorNotes: notes
+      }
+    });
 
-  return updated;
+    return { success: true, error: null };
+  } catch (err) {
+    console.error('Error saving handover notes:', err);
+    return { success: false, error: err instanceof Error ? err.message : "Failed to save supervisor notes." };
+  }
 }

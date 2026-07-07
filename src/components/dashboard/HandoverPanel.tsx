@@ -20,10 +20,15 @@ export default function HandoverPanel({ shiftRunId }: HandoverPanelProps) {
     
     setLoading(true);
     try {
-      await completeShiftAction(shiftRunId);
-      router.push(`/dashboard/handover/${shiftRunId}`);
+      const res = await completeShiftAction(shiftRunId);
+      if (res.success) {
+        router.push(`/dashboard/handover/${shiftRunId}`);
+      } else {
+        alert(`Failed to complete shift: ${res.error || 'Unknown error'}`);
+      }
     } catch (err) {
       console.error('Failed to complete shift:', err);
+      alert('Network error: Failed to complete shift.');
     } finally {
       setLoading(false);
     }

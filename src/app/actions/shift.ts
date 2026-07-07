@@ -10,50 +10,69 @@ const SHIFT_HOURS: Record<string, string[]> = {
   Night: ["23:00 - 00:00", "00:00 - 01:00", "01:00 - 02:00", "02:00 - 03:00", "03:00 - 04:00", "04:00 - 05:00", "05:00 - 06:00", "06:00 - 07:00"]
 };
 
-export async function startShiftAction(shiftName: string) {
-  const user = await getCurrentUser();
-  if (!user) throw new Error("Unauthorized");
+export interface ActionResponse {
+  success: boolean;
+  error: string | null;
+}
 
-  const hours = SHIFT_HOURS[shiftName] || SHIFT_HOURS.Day;
-
-  const shiftRun = await prisma.shiftRun.create({
-    data: {
-      userId: user.id,
-      shiftName,
-      status: 'ACTIVE',
-      productionLogs: {
-        create: hours.map(hour => ({
-          hourLabel: hour,
-          targetQty: 100,
-          actualQty: 0,
-          scrapQty: 0,
-        }))
-      }
+export async function startShiftAction(shiftName: string): Promise<ActionResponse> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: "Unauthorized session." };
     }
-  });
 
-  revalidatePath('/dashboard');
-  return shiftRun;
+    const hours = SHIFT_HOURS[shiftName] || SHIFT_HOURS.Day;
+
+    await prisma.shiftRun.create({
+      data: {
+        userId: user.id,
+        shiftName,
+        status: 'ACTIVE',
+        productionLogs: {
+          create: hours.map(hour => ({
+            hourLabel: hour,
+            targetQty: 100,
+            actualQty: 0,
+            scrapQty: 0,
+          }))
+        }
+      }
+    });
+
+    revalidatePath('/dashboard');
+    return { success: true, error: null };
+  } catch (err) {
+    console.error('Error starting shift:', err);
+    return { success: false, error: err instanceof Error ? err.message : "Failed to initialize shift." };
+  }
 }
 
 export async function updateProductionLogAction(
   logId: string,
   data: { actualQty: number; scrapQty: number; comments: string | null }
-) {
-  const user = await getCurrentUser();
-  if (!user) throw new Error("Unauthorized");
-
-  const updated = await prisma.productionLog.update({
-    where: { id: logId },
-    data: {
-      actualQty: data.actualQty,
-      scrapQty: data.scrapQty,
-      comments: data.comments,
+): Promise<ActionResponse> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: "Unauthorized session." };
     }
-  });
 
-  revalidatePath('/dashboard');
-  return updated;
+    await prisma.productionLog.update({
+      where: { id: logId },
+      data: {
+        actualQty: data.actualQty,
+        scrapQty: data.scrapQty,
+        comments: data.comments,
+      }
+    });
+
+    revalidatePath('/dashboard');
+    return { success: true, error: null };
+  } catch (err) {
+    console.error('Error updating production log:', err);
+    return { success: false, error: err instanceof Error ? err.message : "Failed to save production log." };
+  }
 }
 
 export async function logDowntimeAction(
@@ -61,51 +80,72 @@ export async function logDowntimeAction(
   machineId: string,
   reasonCategory: string,
   notes: string | null
-) {
-  const user = await getCurrentUser();
-  if (!user) throw new Error("Unauthorized");
-
-  const event = await prisma.downtimeEvent.create({
-    data: {
-      shiftRunId,
-      machineId,
-      reasonCategory,
-      startedAt: new Date(),
-      notes,
+): Promise<ActionResponse> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: "Unauthorized session." };
     }
-  });
 
-  revalidatePath('/dashboard');
-  return event;
+    await prisma.downtimeEvent.create({
+      data: {
+        shiftRunId,
+        machineId,
+        reasonCategory,
+        startedAt: new Date(),
+        notes,
+      }
+    });
+
+    revalidatePath('/dashboard');
+    return { success: true, error: null };
+  } catch (err) {
+    console.error('Error logging downtime:', err);
+    return { success: false, error: err instanceof Error ? err.message : "Failed to log machine breakdown." };
+  }
 }
 
-export async function resolveDowntimeAction(eventId: string) {
-  const user = await getCurrentUser();
-  if (!user) throw new Error("Unauthorized");
-
-  const event = await prisma.downtimeEvent.update({
-    where: { id: eventId },
-    data: {
-      endedAt: new Date(),
+export async function resolveDowntimeAction(eventId: string): Promise<ActionResponse> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: "Unauthorized session." };
     }
-  });
 
-  revalidatePath('/dashboard');
-  return event;
+    await prisma.downtimeEvent.update({
+      where: { id: eventId },
+      data: {
+        endedAt: new Date(),
+      }
+    });
+
+    revalidatePath('/dashboard');
+    return { success: true, error: null };
+  } catch (err) {
+    console.error('Error resolving downtime:', err);
+    return { success: false, error: err instanceof Error ? err.message : "Failed to resolve breakdown." };
+  }
 }
 
-export async function completeShiftAction(shiftRunId: string) {
-  const user = await getCurrentUser();
-  if (!user) throw new Error("Unauthorized");
-
-  const shiftRun = await prisma.shiftRun.update({
-    where: { id: shiftRunId },
-    data: {
-      status: 'COMPLETED',
-      endedAt: new Date(),
+export async function completeShiftAction(shiftRunId: string): Promise<ActionResponse> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: "Unauthorized session." };
     }
-  });
 
-  revalidatePath('/dashboard');
-  return shiftRun;
+    await prisma.shiftRun.update({
+      where: { id: shiftRunId },
+      data: {
+        status: 'COMPLETED',
+        endedAt: new Date(),
+      }
+    });
+
+    revalidatePath('/dashboard');
+    return { success: true, error: null };
+  } catch (err) {
+    console.error('Error completing shift:', err);
+    return { success: false, error: err instanceof Error ? err.message : "Failed to complete shift." };
+  }
 }

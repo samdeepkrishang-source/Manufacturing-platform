@@ -7,14 +7,20 @@ import styles from '@/app/dashboard/dashboard.module.css';
 export default function StartShiftPanel() {
   const [shiftName, setShiftName] = useState('Day');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError(null);
     try {
-      await startShiftAction(shiftName);
+      const res = await startShiftAction(shiftName);
+      if (!res.success) {
+        setError(res.error || 'Failed to initialize shift');
+      }
     } catch (err) {
       console.error('Failed to initialize shift:', err);
+      setError('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -24,10 +30,16 @@ export default function StartShiftPanel() {
     <div className={styles.initCard}>
       <h2 className={styles.initTitle}>Initialize Production Shift</h2>
       <p className={styles.initDesc}>
-        Select your active shift schedule to load today's hourly tracker and enable live downtime logging.
+        Select your active shift schedule to load today&apos;s hourly tracker and enable live downtime logging.
       </p>
       
       <form onSubmit={handleSubmit} className={styles.initForm}>
+        {error && (
+          <div style={{ color: '#ff4d4f', fontSize: '14px', marginBottom: '15px', fontWeight: '500' }}>
+            ⚠️ {error}
+          </div>
+        )}
+
         <div className={styles.selectGroup}>
           <label htmlFor="shiftSelect" className={styles.selectLabel}>Shift Pattern</label>
           <select

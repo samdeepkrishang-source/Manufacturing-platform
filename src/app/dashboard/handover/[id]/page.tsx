@@ -56,10 +56,15 @@ export default function HandoverReportPage({ params }: PageProps) {
   const handleSignOff = async () => {
     setSigning(true);
     try {
-      await saveHandoverNotesAction(shiftRunId, notes);
-      router.push('/dashboard');
+      const res = await saveHandoverNotesAction(shiftRunId, notes);
+      if (res.success) {
+        router.push('/dashboard');
+      } else {
+        alert(`Failed to save notes & sign-off: ${res.error || 'Unknown error'}`);
+      }
     } catch (err) {
       console.error('Sign-off error:', err);
+      alert('Network error: Failed to save notes & sign-off.');
     } finally {
       setSigning(false);
     }

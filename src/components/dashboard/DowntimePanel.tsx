@@ -37,11 +37,16 @@ export default function DowntimePanel({ shiftRunId, machines, events }: Downtime
     e.preventDefault();
     setLoading(true);
     try {
-      await logDowntimeAction(shiftRunId, selectedMachineId, reasonCategory, notes || null);
-      setModalOpen(false);
-      setNotes('');
+      const res = await logDowntimeAction(shiftRunId, selectedMachineId, reasonCategory, notes || null);
+      if (res.success) {
+        setModalOpen(false);
+        setNotes('');
+      } else {
+        alert(`Failed to log breakdown: ${res.error || 'Unknown error'}`);
+      }
     } catch (err) {
       console.error('Failed to log downtime:', err);
+      alert('Network error: Failed to log breakdown.');
     } finally {
       setLoading(false);
     }
@@ -50,9 +55,13 @@ export default function DowntimePanel({ shiftRunId, machines, events }: Downtime
   const handleResolveDowntime = async (eventId: string) => {
     setLoading(true);
     try {
-      await resolveDowntimeAction(eventId);
+      const res = await resolveDowntimeAction(eventId);
+      if (!res.success) {
+        alert(`Failed to resolve breakdown: ${res.error || 'Unknown error'}`);
+      }
     } catch (err) {
       console.error('Failed to resolve downtime:', err);
+      alert('Network error: Failed to resolve breakdown.');
     } finally {
       setLoading(false);
     }

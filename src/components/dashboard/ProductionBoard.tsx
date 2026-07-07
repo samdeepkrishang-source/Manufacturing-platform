@@ -45,13 +45,17 @@ export default function ProductionBoard({ logs }: ProductionBoardProps) {
 
     setSavingId(logId);
     try {
-      await updateProductionLogAction(logId, {
+      const res = await updateProductionLogAction(logId, {
         actualQty: log.actualQty,
         scrapQty: log.scrapQty,
         comments: log.comments,
       });
+      if (!res.success) {
+        alert(`Failed to save hourly log: ${res.error || 'Unknown error'}`);
+      }
     } catch (err) {
       console.error('Error saving hourly log:', err);
+      alert('Connection error: Failed to save log.');
     } finally {
       setSavingId(null);
     }

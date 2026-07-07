@@ -1,16 +1,8 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const { PrismaClient } = require('@prisma/client');
-const { PrismaBetterSqlite3 } = require('@prisma/adapter-better-sqlite3');
 const crypto = require('crypto');
-const path = require('path');
 
-// Resolve the absolute path of the database at the project root
-const dbPath = path.resolve(__dirname, '..', 'dev.db');
-console.log('Opening database at:', dbPath);
-
-const adapter = new PrismaBetterSqlite3({
-  url: `file:${dbPath}`
-});
-const prisma = new PrismaClient({ adapter });
+const prisma = new PrismaClient();
 
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -19,7 +11,7 @@ function hashPassword(password) {
 }
 
 async function main() {
-  console.log('Starting seeding...');
+  console.log('Starting database seeding...');
   
   // Clean up existing data
   await prisma.downtimeEvent.deleteMany({});
